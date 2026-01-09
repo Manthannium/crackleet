@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SDE 2 DSA Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .difficulty-EASY { color: #00af9b; font-weight: 700; }
+        .difficulty-MEDIUM { color: #febd00; font-weight: 700; }
+        .difficulty-HARD { color: #ff2d55; font-weight: 700; }
+        .prose pre { background: #2d2d2d; color: #eee; padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; overflow-x: auto; font-family: monospace; }
+        .prose code { background: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.9em; font-family: monospace; }
+        .prose p { margin-bottom: 1rem; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+
+    <div class="max-w-7xl mx-auto p-4 lg:p-8">
+        <div id="setup-area" class="bg-white p-12 rounded-3xl shadow-xl border-2 border-dashed border-blue-200 text-center mb-8">
+            <div class="inline-block p-4 bg-blue-50 rounded-full mb-4">
+                <svg class="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            </div>
+            <h1 class="text-3xl font-black mb-2">LeetCode Tracker</h1>
+            <p class="text-slate-500 mb-8">Select both <b>leetcode_problems.json</b> and <b>problem_descriptions.json</b></p>
+            <input type="file" id="filePicker" multiple accept=".json" class="hidden">
+            <button onclick="document.getElementById('filePicker').click()" class="bg-blue-600 hover:bg-blue-700 text-white px-12 py-4 rounded-2xl font-bold shadow-lg transition-transform active:scale-95">
+                Upload Files
+            </button>
+        </div>
+
+        <div id="dashboard-area" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <input type="text" id="search" placeholder="Search title or ID..." oninput="filterData()" class="p-3 rounded-xl border border-slate-200 focus:ring-4 focus:ring-blue-100 outline-none transition-all shadow-sm">
+                <select id="companySelect" onchange="filterData()" class="p-3 rounded-xl border border-slate-200 bg-white shadow-sm outline-none cursor-pointer hover:border-blue-300"></select>
+                <select id="topicSelect" onchange="filterData()" class="p-3 rounded-xl border border-slate-200 bg-white shadow-sm outline-none cursor-pointer hover:border-blue-300"></select>
+                <select id="diffSelect" onchange="filterData()" class="p-3 rounded-xl border border-slate-200 bg-white shadow-sm outline-none cursor-pointer hover:border-blue-300">
+                    <option value="">All Difficulties</option>
+                    <option value="EASY">Easy</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HARD">Hard</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[75vh]">
+                <div class="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+                    <div class="bg-slate-900 text-white px-5 py-4 flex justify-between items-center">
+                        <span class="text-xs font-black uppercase tracking-widest">Question List</span>
+                        <span id="countBadge" class="bg-blue-500 px-2 py-0.5 rounded text-[10px] font-bold">0</span>
+                    </div>
+                    <div id="problemList" class="overflow-y-auto flex-1 divide-y divide-slate-50"></div>
+                </div>
+
+                <div id="contentView" class="lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-200 p-8 overflow-y-auto">
+                    <div class="flex flex-col items-center justify-center h-full text-slate-300 italic">
+                        <p>Select a problem to view description and frequency details</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let problems = [];
+        let descriptions = {};
+
+        document.getElementById('filePicker').addEventListener('change', async (e) => {
+            for (let file of e.target.files) {
+                const text = await file.text();
+                const json = JSON.parse(text);
+                if (json.data?.problemsetQuestionList) problems = json.data.problemsetQuestionList.questions;
+                if (json.descriptions) descriptions = json.descriptions;
+            }
+            if (problems.length) {
+                document.getElementById('setup-area').classList.add('hidden');
+                document.getElementById('dashboard-area').classList.remove('hidden');
+                initFilters();
+                filterData();
+            }
+        });
+
+        function initFilters() {
+            const companies = new Set();
+            const topics = new Set();
+
+            problems.forEach(p => {
+                p.companyTags?.companies?.forEach(c => companies.add(c));
+                p.topicTags?.forEach(t => topics.add(t.name));
+            });
+
+            const compSelect = document.getElementById('companySelect');
+            compSelect.add(new Option("Select Company (Sort by Freq)", ""));
+            [...companies].sort().forEach(c => compSelect.add(new Option(c, c)));
+
+            const topicSelect = document.getElementById('topicSelect');
+            topicSelect.add(new Option("All Topics", ""));
+            [...topics].sort().forEach(t => topicSelect.add(new Option(t, t)));
+        }
+
+        // Updated Helper for your specific structure
+        function getFrequency(problem, companyName) {
+            if (!problem.companyTags || !companyName) return 0;
+            // Matches structure: problem.companyTags["Amazon"].frequency
+            const companyData = problem.companyTags[companyName];
+            return companyData ? (companyData.frequency || 0) : 0;
+        }
+
+        function filterData() {
+            const query = document.getElementById('search').value.toLowerCase();
+            const company = document.getElementById('companySelect').value;
+            const topic = document.getElementById('topicSelect').value;
+            const diff = document.getElementById('diffSelect').value;
+
+            let filtered = problems.filter(p => {
+                const matchSearch = p.title.toLowerCase().includes(query) || p.frontendQuestionId.includes(query);
+                const matchComp = !company || (p.companyTags?.companies?.includes(company));
+                const matchTopic = !topic || p.topicTags?.some(t => t.name === topic);
+                const matchDiff = !diff || p.difficulty === diff;
+                return matchSearch && matchComp && matchTopic && matchDiff;
+            });
+
+            // Sorting Logic based on your JSON structure
+            if (company) {
+                filtered.sort((a, b) => getFrequency(b, company) - getFrequency(a, company));
+            } else {
+                filtered.sort((a, b) => parseInt(a.frontendQuestionId) - parseInt(b.frontendQuestionId));
+            }
+
+            document.getElementById('countBadge').innerText = filtered.length;
+            const list = document.getElementById('problemList');
+            list.innerHTML = filtered.map(p => {
+                const freq = company ? getFrequency(p, company) : 0;
+                const freqBadge = freq > 0 ? `<span class="ml-2 bg-orange-100 text-orange-700 text-[10px] px-1.5 py-0.5 rounded font-black border border-orange-200">FREQ: ${freq}</span>` : '';
+                
+                return `
+                    <div onclick="renderDetail('${p.titleSlug}')" class="p-4 hover:bg-slate-50 cursor-pointer transition border-l-4 border-transparent hover:border-blue-500 group">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-[10px] font-mono text-slate-400">#${p.frontendQuestionId}</span>
+                            <span class="text-[10px] font-bold difficulty-${p.difficulty}">${p.difficulty}</span>
+                        </div>
+                        <div class="font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
+                            ${p.title} ${freqBadge}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderDetail(slug) {
+            const p = problems.find(x => x.titleSlug === slug);
+            const desc = descriptions[slug];
+            const view = document.getElementById('contentView');
+            const selectedCompany = document.getElementById('companySelect').value;
+
+            view.innerHTML = `
+                <div class="mb-8">
+                    <h1 class="text-3xl font-black text-slate-900 mb-4">${p.frontendQuestionId}. ${p.title}</h1>
+                    <div class="flex flex-wrap gap-2 items-center mb-4">
+                        <span class="px-4 py-1.5 bg-slate-100 rounded-lg text-xs font-bold difficulty-${p.difficulty}">${p.difficulty}</span>
+                        <div class="h-4 w-[1px] bg-slate-200 mx-2"></div>
+                        ${p.topicTags.map(t => `<span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[11px] font-bold border border-blue-100">${t.name}</span>`).join('')}
+                    </div>
+                    ${selectedCompany ? `
+                        <div class="p-4 bg-orange-50 rounded-xl border border-orange-100">
+                            <span class="text-orange-800 font-bold text-sm">Target Company Analysis:</span>
+                            <span class="ml-2 text-orange-600 font-black">${selectedCompany} Frequency Score: ${getFrequency(p, selectedCompany)}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div class="prose max-w-none text-slate-700 leading-relaxed border-t pt-8">
+                    ${desc ? desc.description_html : '<p class="italic text-slate-400">Problem description HTML not available in the provided JSON.</p>'}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
